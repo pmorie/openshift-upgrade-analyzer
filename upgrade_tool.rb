@@ -4,6 +4,8 @@ require 'rubygems/package'
 require 'zlib'
 require 'json'
 require 'thor'
+require 'fileutils'
+require 'zlib'
 
 
 class UpgradeAnalyzer
@@ -26,41 +28,43 @@ class UpgradeAnalyzer
       filter = "results"
     end
 
-    buffer = ''
+    File.open("#{output_file}.gz", 'w') do |f|
+      gz = Zlib::GzipWriter.new(f)
 
-    files.each do |file|
-      unless file =~ /.*\.tar\.gz/
-        puts "Skipping unrecognized file #{file}"
-        next
+      files.each do |file|
+        unless file =~ /.*\.tar\.gz/
+          puts "Skipping unrecognized file #{file}"
+          next
+        end
+
+        puts "processing #{file}"
+
+        tar_extract = Gem::Package::TarReader.new(Zlib::GzipReader.open(file))
+        tar_extract.rewind # The extract has to be rewinded after every iteration
+        tar_extract.each do |entry|
+          next unless entry.file?
+
+          filename = File.basename(entry.full_name)
+
+          # skip archived results
+          next if filename =~ /upgrade_(#{filter})_(.*)(_\d{4}-\d{2}-\d{2}(-\d{6})?)/
+
+          next unless filename =~ /upgrade_(#{filter})_(.*)/
+
+          puts "combining #{filename}"
+          
+          gz.write(entry.read)
+        end
+        tar_extract.close
       end
 
-      puts "processing #{file}"
-
-      tar_extract = Gem::Package::TarReader.new(Zlib::GzipReader.open(file))
-      tar_extract.rewind # The extract has to be rewinded after every iteration
-      tar_extract.each do |entry|
-        next unless entry.file?
-
-        filename = File.basename(entry.full_name)
-
-        # skip archived results
-        next if filename =~ /upgrade_(#{filter})_(.*)(_\d{4}-\d{2}-\d{2}-\d{6})/
-
-        next unless filename =~ /upgrade_(#{filter})_(.*)/
-
-        puts "combining #{filename}"
-        
-        buffer << entry.read
-      end
-      tar_extract.close
+      gz.close
     end
-
-    File.open(output_file, 'w') {|f| f.write(buffer) }
   end
 
   def persist_mongo(file)
     raise "File #{file} not found" unless File.exists?(file)
-    raise "File #{file} isn't a .json file" unless File.basename(file).end_with?('.json')
+    raise "File #{file} isn't a .json.gz file" unless File.basename(file).end_with?('.json.gz')
 
     require 'mongo'
 
@@ -69,7 +73,7 @@ class UpgradeAnalyzer
     username = ENV['OPENSHIFT_MONGODB_DB_USERNAME']
     password = ENV['OPENSHIFT_MONGODB_DB_PASSWORD']
     db_name = ENV['OPENSHIFT_APP_NAME']
-    collection_name = "upgrade_#{File.basename(file, '.json')}"
+    collection_name = "upgrade_#{File.basename(file, '.json.gz')}"
 
     client = Mongo::MongoClient.new(host, port)
     db = client[db_name]
@@ -79,24 +83,39 @@ class UpgradeAnalyzer
     puts "writing entries to #{db.name}.#{collection_name} from #{file}"
 
     records_written = 0
-    File.open(file, 'r').each_line do |line|
-      entry = JSON.load(line)
-      process_entry_for_mongo(entry)
+    File.open(file, 'r') do |f|
+      gz = Zlib::GzipReader.new(f)
+      gz.each_line do |line|
+        entry = JSON.load(line)
+        process_entry_for_mongo(entry)
 
-      begin
-        col.insert(entry)
-        records_written += 1
-      rescue => e
-        puts "Failed to insert entry: #{entry.inspect}"
-        puts e.message
-        raise
+        begin
+          col.insert(entry)
+          records_written += 1
+        rescue => e
+          puts "Failed to insert entry: #{entry.inspect}"
+          puts e.message
+          raise
+        end
       end
+      gz.close
     end
 
     puts "done; wrote #{records_written} records"
   end
 
   private
+
+  def append_to_file(filename, value)
+    FileUtils.touch filename unless File.exists?(filename)
+
+    file = File.open(filename, 'a')
+    begin
+      file.puts value
+    ensure
+      file.close
+    end
+  end
 
   def process_entry_for_mongo(entry)
     return unless entry['remote_upgrade_result']
