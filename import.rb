@@ -15,12 +15,12 @@ def import
     if Dir.glob(File.join(upload_dir, '*.tar.gz')).length > 0
       log "Importing files from #{upload_dir}"
 
-      out_file = File.join(upload_dir, "#{File.basename(upload_dir)}.json")
+      out_file = File.join(upload_dir, "#{File.basename(upload_dir)}.json.gz")
 
       output = ''
       begin
         log "Combining files into #{out_file}"
-        output, exit_code = run "#{upgrade_tool} combine --files #{File.join(upload_dir, '*.tar.gz')} --out #{out_file} 2>&1"
+        output, exit_code = run "#{upgrade_tool} combine --mode errors --files #{File.join(upload_dir, '*.tar.gz')} --out #{out_file} 2>&1"
         raise "Non-zero exit code: #{exit_code}" unless exit_code == 0
 
         log output

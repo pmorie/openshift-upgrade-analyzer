@@ -28,7 +28,7 @@ class UpgradeAnalyzer
       filter = "results"
     end
 
-    File.open("#{output_file}.gz", 'w') do |f|
+    File.open("#{output_file}", 'w') do |f|
       gz = Zlib::GzipWriter.new(f)
 
       files.each do |file|
