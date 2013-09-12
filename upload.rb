@@ -25,11 +25,11 @@ Dir.mktmpdir do |tmp|
     puts `#{cmd} 2>&1`
 
     puts "Uploading #{urls.length} files to #{scp_host}..."
-    cmd = "scp -r #{upload_dir} #{scp_host}:app-root/data/uploads"
+    cmd = "scp -r #{upload_dir} #{scp_host}:~/app-root/data/uploads/#{label}"
     puts `#{cmd} 2>&1`
 
     puts "Marking upload ready..."
-    puts `ssh #{scp_host} "touch app-root/data/uploads/#{label}/upload.ready" 2>&1`
+    puts `ssh #{scp_host} "touch ~/app-root/data/uploads/#{label}/upload.ready" 2>&1`
   end
 end
 
