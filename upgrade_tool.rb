@@ -118,16 +118,25 @@ class UpgradeAnalyzer
   end
 
   def process_entry_for_mongo(entry)
-    return unless entry['remote_upgrade_result']
-
-    if entry['remote_upgrade_result']['itinerary']
+    if entry['remote_upgrade_result'] and entry['remote_upgrade_result']['itinerary']
       processed_itinerary = {}
-
       entry['remote_upgrade_result']['itinerary'].each do |k, v|
         processed_itinerary[k.gsub('.', '_')] = v
       end
-
+ 
       entry['remote_upgrade_result']['itinerary'] = processed_itinerary
+    end
+ 
+    if entry['attempts']
+      entry['attempts'].each do |attempt|
+        next unless attempt and attempt['itinerary']
+        processed_itinerary = {}
+
+        attempt['itinerary'].each do |k, v|
+          processed_itinerary[k.gsub('.', '_')] = v
+        end
+        attempt['itinerary'] = processed_itinerary
+      end
     end
   end
 end
